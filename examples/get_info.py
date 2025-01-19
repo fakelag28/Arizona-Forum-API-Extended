@@ -1,5 +1,4 @@
-import arz_api
-
+import arz_api_extended as arz_api
 
 cookies = {"xf_user": "your",
            "xf_tfa_trust": "your",
