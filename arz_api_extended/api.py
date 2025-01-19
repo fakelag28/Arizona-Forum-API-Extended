@@ -276,6 +276,15 @@ class ArizonaAPI:
         return result
     
     def get_threads_extended(self, category_id: int, page: int = 1) -> list:
+        """[NEW] Получить темы из раздела на странице, с дополнительной информацией о темах
+
+        Attributes:
+            category_id (int): ID категории
+            page (int): Cтраница для поиска. По умолчанию 1 (необяз.)
+            
+        Returns:
+            Словарь (dict), состоящий из списков закрепленных ('pins') и незакрепленных ('unpins') тем
+        """
         request = self.session.get(f"{MAIN_URL}/forums/{category_id}/page-{page}?_xfResponseType=json&_xfToken={self.token}").json()
         if request['status'] == 'error':
             return None
@@ -673,6 +682,35 @@ class ArizonaAPI:
         soup = BeautifulSoup(unescape(request['html']['content']), "lxml")
         return [i['id'].strip('js-post-') for i in soup.find_all('article', {'id': compile('js-post-*')})]
     
+    def get_all_thread_posts(self, thread_id: int) -> list:
+        """[NEW] Получить все сообщения из темы на всех страницах треда
+
+        Attributes:
+            thread_id (int): ID темы
+
+        Returns:
+            Список (list), состоящий из ID всех сообщений в теме
+        """
+        all_posts = []
+        page = 1
+        while True:
+            request = self.session.get(f"{MAIN_URL}/threads/{thread_id}/page-{page}?_xfResponseType=json&_xfToken={self.token}").json()
+            if request['status'] == 'error':
+                break
+            soup = BeautifulSoup(unescape(request['html']['content']), "lxml")
+            posts = [i['id'].strip('js-post-') for i in soup.find_all('article', {'id': compile('js-post-*')})]
+            if not posts:
+                break
+            all_posts.extend(posts)
+            if page == 1:
+                try:
+                    pages_count = int(soup.find('ul', {'class': 'pageNav-main'}).find_all('li', {'class': 'pageNav-page'})[-1].text)
+                except:
+                    pages_count = 1
+            if page >= pages_count:
+                break
+            page += 1
+        return all_posts
 
     def react_thread(self, thread_id: int, reaction_id: int = 1) -> Response:
         """Поставить реакцию на тему
