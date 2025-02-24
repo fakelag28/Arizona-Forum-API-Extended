@@ -474,7 +474,9 @@ class ArizonaAPI:
             Объект Response модуля requests
         """
 
-        return self.session.post(f"{MAIN_URL}/posts/{post_id}/edit", {"message_html": message_html, "message": message_html, "_xfToken": self.token})
+        title_of_thread_post = self.get_post(post_id).thread.title
+
+        return self.session.post(f"{MAIN_URL}/posts/{post_id}/edit", {"title": title_of_thread_post, "message_html": message_html, "message": message_html, "_xfToken": self.token})
 
 
     def delete_post(self, post_id: int, reason: str, hard_delete: bool = False) -> Response:
@@ -742,3 +744,100 @@ class ArizonaAPI:
 
         data.update({'_xfToken': self.token})
         return self.session.post(f"{MAIN_URL}/form/{form_id}/submit", data)
+
+    def get_notifications(self) -> list:
+        """Получить список уведомлений с детальной информацией"""
+        content = BeautifulSoup(self.session.get(f"{MAIN_URL}/account/alerts").content, 'lxml')
+        notifications = []
+        
+        for alert in content.find_all('li', {'class': 'js-alert'}):
+            if not alert.has_attr('data-alert-id'):
+                continue
+                
+            sender = None
+            username_link = alert.find('a', {'class': 'username'})
+            if username_link:
+                sender = {
+                    'id': int(username_link.get('data-user-id', 0)),
+                    'name': username_link.get_text(strip=True),
+                    'avatar': None,
+                    'avatar_color': None,
+                    'initials': None
+                }
+                
+                avatar_img = alert.find('img', {'class': 'avatar'})
+                avatar_span = alert.find('span', {'class': 'avatar-u'})
+                
+                if avatar_img and avatar_img.has_attr('src'):
+                    sender['avatar'] = avatar_img['src']
+                elif avatar_span:
+                    sender['avatar_color'] = avatar_span.get('style') 
+                    sender['initials'] = avatar_span.get_text(strip=True) if avatar_span else None
+
+            time_tag = alert.find('time')
+            timestamp = {
+                'iso': time_tag['datetime'] if time_tag else None,
+                'unix': int(time_tag['data-time']) if time_tag and time_tag.has_attr('data-time') else None
+            } if time_tag else None
+
+            alert_data = {
+                'id': alert['data-alert-id'],
+                'is_unread': 'is-unread' in alert.get('class', []),
+                'text': alert.find('div', {'class': 'contentRow-main'}).get_text(strip=True) if alert.find('div', {'class': 'contentRow-main'}) else None,
+                'link': alert.find('a', {'class': 'fauxBlockLink-blockLink'})['href'] if alert.find('a', {'class': 'fauxBlockLink-blockLink'}) else None,
+                'sender': sender,
+                'timestamp': timestamp
+            }
+            
+            notifications.append(alert_data)
+            
+        return notifications
+
+    def search_threads(self, query: str, sort: str = 'relevance') -> list:
+        """Поиск тем по форуму с заданными параметрами
+        
+        Attributes:
+            query (str): Поисковый запрос
+            sort (str): Тип сортировки (relevance, date, etc)
+            
+        Returns:
+            Список словарей с информацией о найденных темах
+        """
+        url = f"{MAIN_URL}/search/24587779/?q={query}&o={sort}"
+        content = BeautifulSoup(self.session.get(url).content, 'lxml')
+        results = []
+        
+        for thread in content.find_all('li', {'class': 'block-row'}):
+            title_link = thread.find('h3', {'class': 'contentRow-title'}).find('a')
+            date_tag = thread.find('time', {'class': 'u-dt'})
+            answers_tag = thread.find(text=compile('Ответы: '))
+            
+            thread_data = {
+                'title': title_link.text.strip().split('| Причина:')[0].strip(),
+                'status': thread.find('span', {'class': 'label'}).text if thread.find('span', {'class': 'label'}) else None,
+                'author': thread['data-author'],
+                'thread_id': int(title_link['href'].split('/')[-2]),
+                'create_date': int(date_tag['data-time']) if date_tag else None,
+                'answers_count': int(answers_tag.split(': ')[1]) if answers_tag else 0,
+                'forum': thread.find('a', href=compile('/forums/')).text if thread.find('a', href=compile('/forums/')) else None,
+                'snippet': thread.find('div', {'class': 'contentRow-snippet'}).text.strip() if thread.find('div', {'class': 'contentRow-snippet'}) else None,
+                'url': MAIN_URL + title_link['href']
+            }
+            
+            results.append(thread_data)
+            
+        return results
+    
+    def mark_notifications_read(self, alert_ids: list[int]) -> Response:
+        """Пометить уведомления как прочитанные"""
+        data = {
+            '_xfToken': self.token,
+            'alert_id': alert_ids,
+            '_xfAction': 'toggle',
+            '_xfWithData': 1
+        }
+        
+        return self.session.post(
+            f"{MAIN_URL}/account/alert-toggle",
+            data=data
+        )
