@@ -122,7 +122,7 @@ class ArizonaAPI:
 
         creator_id = content.find('a', {'class': 'username'})
         try: creator = self.get_member(int(creator_id['data-user-id']))
-        except: creator = Member(self, int(creator_id['data-user-id']), content.find('a', {'class': 'username'}).text, None, None, None, None, None, None)
+        except: creator = Member(self, int(creator_id['data-user-id']), content.find('a', {'class': 'username'}).text, None, None, None, None, None, None, None)
         
         create_date = int(content.find('time')['data-time'])
         
@@ -157,7 +157,7 @@ class ArizonaAPI:
         try: creator = self.get_member(int(post.find('a', {'data-xf-init': 'member-tooltip'})['data-user-id']))
         except:
             user_info = post.find('a', {'data-xf-init': 'member-tooltip'})
-            creator = Member(self, int(user_info['data-user-id']), user_info.text, None, None, None, None, None, None)
+            creator = Member(self, int(user_info['data-user-id']), user_info.text, None, None, None, None, None, None, None)
 
         thread = self.get_thread(int(content.find('html')['data-content-key'].strip('thread-')))
         create_date = int(post.find('time', {'class': 'u-dt'})['data-time'])
@@ -841,3 +841,43 @@ class ArizonaAPI:
             f"{MAIN_URL}/account/alert-toggle",
             data=data
         )
+    
+    def get_post_bbcode(self, thread_id: int, post_id: int) -> str:
+        """Получить BB-код из HTML-содержимого поста
+        
+        Attributes:
+            post_id (int, optional): ID поста для получения HTML-содержимого
+            html_content (str, optional): HTML-содержимое поста
+            
+        Returns:
+            str: BB-код поста
+        """
+        params = {
+            '_xfRequestUri': f'/threads/{thread_id}/',
+            '_xfWithData': 1,
+            '_xfToken': self.token,
+            '_xfResponseType': 'json'
+        }
+            
+        response = self.session.get(
+            f"{MAIN_URL}/posts/{post_id}/edit",
+            params=params
+        )
+            
+        html_content = response.json().get('html', {}).get('content', '')
+        
+        if not html_content:
+            return ''
+            
+        data = {
+            '_xfResponseType': 'json',
+            '_xfRequestUri': f'/threads/{thread_id}/',
+            '_xfWithData': 1,
+            '_xfToken': self.token,
+            'html': html_content
+        }
+        response = self.session.post(
+            f"{MAIN_URL}/index.php?editor/to-bb-code",
+            data=data
+        )
+        return response.json().get('bbCode', '')
